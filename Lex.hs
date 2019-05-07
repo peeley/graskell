@@ -34,6 +34,7 @@ data Token = Start |
             FloatValue |
             BoolValue |
             NullValue | 
+            Keyword |
             StringValue deriving (Eq, Show)
 
 data Lexeme = Lexeme {
@@ -55,6 +56,9 @@ startLexeme = Lexeme {
     val = "<START>"}
 
 punctuators = "!$():=@[]{}|"
+keywords = ["query", "mutation", "keyword", "subscription", "schema", "extend",
+            "on", "scalar", "implements", "type", "interface", "union", "enum",
+            "input", "directive"] 
 
 lexProgram :: String -> [Lexeme]
 lexProgram program = getLexeme startState program [startLexeme]
@@ -94,13 +98,16 @@ skipComment [] s = ""
 handleName :: String -> LexerState -> Handled
 handleName (char:rest) state
     | char == '_' = handleName rest (addChar state '_')
-    | isLetter char || isNumber char = handleName rest (addChar state char)
+    | isLetter char || isNumber char = 
+        handleName rest (addChar state char)
 handleName rest state
-    | currString state == "true" || currString state == "false" =
+    | currStr == "true" || currStr == "false" =
         handledFactory state rest BoolValue
-    | currString state == "null" =
+    | currStr == "null" =
         handledFactory state rest NullValue
+    | currStr `elem` keywords = handledFactory state rest Keyword
     | otherwise = handledFactory state rest Name
+    where currStr = currString state
 
 handlePunct :: String -> LexerState -> Handled
 handlePunct rest state = handledFactory state rest Punctuator
@@ -111,14 +118,14 @@ handleNumber (char:rest) state
     | char == '.' || char == 'e' || char == 'E' =
         handleFloat rest (addChar state char)
 handleNumber rest state = if currString state == "-" then
-                            lexerError state "Bare '-'" 
+                            lexerError state "Illegal '-'" 
                             else 
                             handledFactory state rest IntValue
 
 handleFloat :: String -> LexerState -> Handled
 handleFloat (char:rest) state
     | isNumber char = handleFloat rest (addChar state char)
-    | otherwise =
+handleFloat rest state =
         handledFactory state rest FloatValue
 
 handleString :: String -> LexerState -> Handled
@@ -132,6 +139,7 @@ handledFactory state rest tokType = (Lexeme {
                         tok = tokType,
                         val = (currString state)},
                       state {
+                          lastToken = tokType,
                           lastString = currString state,
                           currString = ""},
                       rest)
