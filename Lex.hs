@@ -68,7 +68,9 @@ getLexeme s [] lexs = lexs ++ [Lexeme (currLoc s) End "<END>"]
 getLexeme s ('\xFEFF':rest) lexs = getLexeme (moveChar s) rest lexs
 getLexeme s (',':rest) lexs = getLexeme (moveChar s) rest lexs
 getLexeme s ('#':rest) lexs = getLexeme (moveNewLine s) (skipComment rest s) lexs
-getLexeme s ('.':'.':'.':rest) lexs = undefined
+getLexeme s ('.':'.':'.':rest) lexs = 
+    let newState = (moveChar . moveChar . moveChar) s in
+    getLexeme newState rest $ lexs ++ [Lexeme (currLoc s) Punctuator "..."]
 getLexeme s (char:rest) lexs
     | isSpace char = getLexeme (moveChar s) rest lexs
     | char `elem` punctuators =
@@ -143,6 +145,8 @@ handleExp str@(char:rest) state
 
 handleString :: String -> LexerState -> Handled
 handleString ('"':rest) state = handledFactory state rest StringValue
+handleString ('\\':'u':char:rest) state = undefined -- TODO : unicode
+handleString ('\\':char:rest) state = handleString rest (addChar state char)
 handleString (char:rest) state = handleString rest (addChar state char)
 handleString [] state = lexerError state "Reached EOF in string"
 
