@@ -32,12 +32,13 @@ data Token = Start |
             Name |
             IntValue |
             FloatValue |
+            BoolValue |
             StringValue deriving (Eq, Show)
 
 data Lexeme = Lexeme {
     loc :: (Int, Int), 
     tok :: Token,
-    str :: String } deriving Show
+    val :: String } deriving Show
 
 type Handled = (Lexeme, LexerState, String)
 
@@ -45,19 +46,23 @@ startState = LexerState {
     currLoc = (0,0),
     currString = "",
     lastString = "",
-    lastToken = Start
-}
+    lastToken = Start}
+
+startLexeme = Lexeme {
+    loc = (0,0),
+    tok = Start,
+    val = "<START>"}
 
 punctuators = "!$():=@[]{}|"
 
 lexProgram :: String -> [Lexeme]
-lexProgram program = getLexeme startState program []
+lexProgram program = getLexeme startState program [startLexeme]
 
 getLexeme :: LexerState -> String -> [Lexeme] -> [Lexeme]
 getLexeme s [] lexs = lexs ++ [Lexeme (currLoc s) End "<END>"]
 getLexeme s ('\xFEFF':rest) lexs = getLexeme (moveChar s) rest lexs
 getLexeme s (',':rest) lexs = getLexeme (moveChar s) rest lexs
-getLexeme s ('#':rest) lexs = getLexeme (moveNewLine s) (skipComment rest) lexs
+getLexeme s ('#':rest) lexs = getLexeme (moveNewLine s) (skipComment rest s) lexs
 getLexeme s ('.':'.':'.':rest) lexs = undefined
 getLexeme s (char:rest) lexs
     | isSpace char = getLexeme (moveChar s) rest lexs
@@ -67,28 +72,55 @@ getLexeme s (char:rest) lexs
     | isLetter char || char == '_' = 
         let (handledLex, handledState, handledRest) = handleName rest (addChar s char) in 
         getLexeme handledState handledRest (lexs ++ [handledLex])
+    | isNumber char || char == '-' =
+        let (handledLex, handledState, handledRest) = handleNumber rest (addChar s char) in 
+        getLexeme handledState handledRest (lexs ++ [handledLex])
+    | char == '+' =
+        -- TODO: add state for +123e456
+        let (handledLex, handledState, handledRest) = handleFloat rest (addChar s char) in 
+        getLexeme handledState handledRest (lexs ++ [handledLex])
     | otherwise = getLexeme (moveChar s) rest lexs
 
-skipComment :: String -> String
-skipComment ('\x000A':rest) = rest
-skipComment ('\x000D':rest) = rest
-skipComment (char:rest) = skipComment rest
+skipComment :: String -> LexerState -> String
+skipComment ('\x000A':rest) s = rest
+skipComment ('\x000D':rest) s = rest
+skipComment (char:rest) s = skipComment rest s
+skipComment [] s = error $ "LEX ERROR " ++ (show (currLoc s)) ++ ": reached EOF in comment"
 
 handleName :: String -> LexerState -> Handled
 handleName (char:rest) state
     | char == '_' = handleName rest (addChar state '_')
     | isLetter char || isNumber char = handleName rest (addChar state char)
-handleName rest state = handledFactory state rest
+handleName rest state
+    | currString state == "true" || currString state == "false" =
+        handledFactory state rest BoolValue
+    | otherwise = handledFactory state rest Name
 
 handlePunct :: String -> LexerState -> Handled
-handlePunct rest state = handledFactory state rest
+handlePunct rest state = handledFactory state rest Punctuator
 
-handledFactory :: LexerState -> String -> Handled
-handledFactory state rest = (Lexeme { 
+handleNumber :: String -> LexerState -> Handled
+handleNumber (char:rest) state
+    | isNumber char = handleNumber rest (addChar state char)
+    | char == '.' || char == 'e' || char == 'E' =
+        handleFloat rest (addChar state char)
+handleNumber rest state = if currString state == "-" then
+                    error $ "LEX ERROR " ++ (show (currLoc state)) ++ ": bare '-'" 
+                    else handledFactory state rest IntValue
+
+handleFloat :: String -> LexerState -> Handled
+handleFloat (char:rest) state
+    | isNumber char = handleFloat rest (addChar state char)
+    | otherwise =
+        handledFactory state rest FloatValue
+
+handledFactory :: LexerState -> String -> Token -> Handled
+handledFactory state rest tokType = (Lexeme { 
                         loc = (currLoc state),
-                        tok = Punctuator,
-                        str = (currString state)},
+                        tok = tokType,
+                        val = (currString state)},
                       state {
                           lastString = currString state,
                           currString = ""},
                       rest)
+
