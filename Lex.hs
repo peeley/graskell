@@ -80,14 +80,10 @@ getLexeme s (char:rest) lexs
     | isNumber char || char == '-' =
         let (handledLex, handledState, handledRest) = handleNumber rest (addChar s char) in 
         getLexeme handledState handledRest (lexs ++ [handledLex])
-    | char == '+' =
-        -- TODO: add state for +123e456
-        let (handledLex, handledState, handledRest) = handleFloat rest (addChar s char) in 
-        getLexeme handledState handledRest (lexs ++ [handledLex])
     | char == '"' =
         let (handledLex, handledState, handledRest) = handleString rest s in 
         getLexeme handledState handledRest (lexs ++ [handledLex])
-    | otherwise = getLexeme (moveChar s) rest lexs
+    | otherwise = lexerError s $ "Illegal character " ++ [char]
 
 skipComment :: String -> LexerState -> String
 skipComment ('\x000A':rest) s = rest
@@ -96,37 +92,54 @@ skipComment (char:rest) s = skipComment rest s
 skipComment [] s = ""
 
 handleName :: String -> LexerState -> Handled
-handleName (char:rest) state
+handleName [] state = handledFactory state "" Name
+handleName str@(char:rest) state
     | char == '_' = handleName rest (addChar state '_')
     | isLetter char || isNumber char = 
         handleName rest (addChar state char)
-handleName rest state
     | currStr == "true" || currStr == "false" =
-        handledFactory state rest BoolValue
+        handledFactory state str BoolValue
     | currStr == "null" =
-        handledFactory state rest NullValue
-    | currStr `elem` keywords = handledFactory state rest Keyword
-    | otherwise = handledFactory state rest Name
+        handledFactory state str NullValue
+    | currStr `elem` keywords = handledFactory state str Keyword
+    | otherwise = handledFactory state str Name
     where currStr = currString state
 
 handlePunct :: String -> LexerState -> Handled
 handlePunct rest state = handledFactory state rest Punctuator
 
 handleNumber :: String -> LexerState -> Handled
-handleNumber (char:rest) state
-    | isNumber char = handleNumber rest (addChar state char)
-    | char == '.' || char == 'e' || char == 'E' =
+handleNumber [] state = handledFactory state "" IntValue
+handleNumber str@(char:rest) state
+    | isNumber char = handleNumber rest $ addChar state char
+    | char == '.'  = 
         handleFloat rest (addChar state char)
-handleNumber rest state = if currString state == "-" then
+    | char == 'e' || char == 'E' =
+        let (nextChar:remaining) = rest in
+        let expState = addChar state char in
+        if nextChar == '+' || nextChar == '-' then
+            handleExp remaining $ addChar expState nextChar
+        else
+            handleExp remaining $ addChar (addChar expState '+') nextChar
+    | otherwise = if currString state == "-" then
                             lexerError state "Illegal '-'" 
                             else 
                             handledFactory state rest IntValue
 
 handleFloat :: String -> LexerState -> Handled
-handleFloat (char:rest) state
-    | isNumber char = handleFloat rest (addChar state char)
-handleFloat rest state =
-        handledFactory state rest FloatValue
+handleFloat [] state = handledFactory state "" FloatValue
+handleFloat str@(char:rest) state
+    | isNumber char = 
+        handleFloat rest (addChar state char)
+    | char == 'e' || char == 'E' =
+        handleExp rest (addChar state char)
+    | otherwise = handledFactory state str FloatValue
+
+handleExp :: String -> LexerState -> Handled
+handleExp [] state = handledFactory state "" FloatValue
+handleExp str@(char:rest) state
+    | isNumber char = handleExp rest (addChar state char)
+    | otherwise = handledFactory state str FloatValue
 
 handleString :: String -> LexerState -> Handled
 handleString ('"':rest) state = handledFactory state rest StringValue
