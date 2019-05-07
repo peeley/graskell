@@ -79,13 +79,16 @@ getLexeme s (char:rest) lexs
         -- TODO: add state for +123e456
         let (handledLex, handledState, handledRest) = handleFloat rest (addChar s char) in 
         getLexeme handledState handledRest (lexs ++ [handledLex])
+    | char == '"' =
+        let (handledLex, handledState, handledRest) = handleString rest s in 
+        getLexeme handledState handledRest (lexs ++ [handledLex])
     | otherwise = getLexeme (moveChar s) rest lexs
 
 skipComment :: String -> LexerState -> String
 skipComment ('\x000A':rest) s = rest
 skipComment ('\x000D':rest) s = rest
 skipComment (char:rest) s = skipComment rest s
-skipComment [] s = error $ "LEX ERROR " ++ (show (currLoc s)) ++ ": reached EOF in comment"
+skipComment [] s = ""
 
 handleName :: String -> LexerState -> Handled
 handleName (char:rest) state
@@ -113,6 +116,11 @@ handleFloat (char:rest) state
     | isNumber char = handleFloat rest (addChar state char)
     | otherwise =
         handledFactory state rest FloatValue
+
+handleString :: String -> LexerState -> Handled
+handleString ('"':rest) state = handledFactory state rest StringValue
+handleString (char:rest) state = handleString rest (addChar state char)
+handleString [] state = error $ "LEX ERROR " ++ (show (currLoc state)) ++ ": reached EOF in string"
 
 handledFactory :: LexerState -> String -> Token -> Handled
 handledFactory state rest tokType = (Lexeme { 
