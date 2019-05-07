@@ -33,6 +33,7 @@ data Token = Start |
             IntValue |
             FloatValue |
             BoolValue |
+            NullValue | 
             StringValue deriving (Eq, Show)
 
 data Lexeme = Lexeme {
@@ -97,6 +98,8 @@ handleName (char:rest) state
 handleName rest state
     | currString state == "true" || currString state == "false" =
         handledFactory state rest BoolValue
+    | currString state == "null" =
+        handledFactory state rest NullValue
     | otherwise = handledFactory state rest Name
 
 handlePunct :: String -> LexerState -> Handled
