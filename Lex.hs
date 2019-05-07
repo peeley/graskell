@@ -111,8 +111,9 @@ handleNumber (char:rest) state
     | char == '.' || char == 'e' || char == 'E' =
         handleFloat rest (addChar state char)
 handleNumber rest state = if currString state == "-" then
-                    error $ "LEX ERROR " ++ (show (currLoc state)) ++ ": bare '-'" 
-                    else handledFactory state rest IntValue
+                            lexerError state "Bare '-'" 
+                            else 
+                            handledFactory state rest IntValue
 
 handleFloat :: String -> LexerState -> Handled
 handleFloat (char:rest) state
@@ -123,7 +124,7 @@ handleFloat (char:rest) state
 handleString :: String -> LexerState -> Handled
 handleString ('"':rest) state = handledFactory state rest StringValue
 handleString (char:rest) state = handleString rest (addChar state char)
-handleString [] state = error $ "LEX ERROR " ++ (show (currLoc state)) ++ ": reached EOF in string"
+handleString [] state = lexerError state "Reached EOF in string"
 
 handledFactory :: LexerState -> String -> Token -> Handled
 handledFactory state rest tokType = (Lexeme { 
@@ -135,3 +136,5 @@ handledFactory state rest tokType = (Lexeme {
                           currString = ""},
                       rest)
 
+lexerError :: LexerState -> String -> a
+lexerError state string = error $ "LEX ERROR " ++ (show (currLoc state)) ++ ": " ++ string
