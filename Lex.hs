@@ -60,8 +60,13 @@ keywords = ["query", "mutation", "keyword", "subscription", "schema", "extend",
             "on", "scalar", "implements", "type", "interface", "union", "enum",
             "input", "directive"] 
 
-lexProgram :: String -> [Lexeme]
-lexProgram program = getLexeme startState program [startLexeme]
+lexString :: String -> [Lexeme]
+lexString program = getLexeme startState program [startLexeme]
+
+lexFile :: String -> IO [Lexeme]
+lexFile filename = do
+    fileContents <- readFile filename
+    return $ lexString fileContents
 
 getLexeme :: LexerState -> String -> [Lexeme] -> [Lexeme]
 getLexeme s [] lexs = lexs ++ [Lexeme (currLoc s) End "<END>"]
@@ -71,20 +76,24 @@ getLexeme s ('#':rest) lexs = getLexeme (moveNewLine s) (skipComment rest s) lex
 getLexeme s ('.':'.':'.':rest) lexs = 
     let newState = (moveChar . moveChar . moveChar) s in
     getLexeme newState rest $ lexs ++ [Lexeme (currLoc s) Punctuator "..."]
+getLexeme s ('"':'"':'"':rest) lexs =
+    let newState = (moveChar . moveChar . moveChar) s in
+    let (hLex, hState, hRest) = handleBlock rest newState in
+    getLexeme hState hRest (lexs ++ [hLex])
 getLexeme s (char:rest) lexs
     | isSpace char = getLexeme (moveChar s) rest lexs
     | char `elem` punctuators =
-        let (handledLex, handledState, handledRest) = handlePunct rest (addChar s char) in
-        getLexeme handledState handledRest (lexs ++ [handledLex])
+        let (hLex, hState, hRest) = handlePunct rest (addChar s char) in
+        getLexeme hState hRest (lexs ++ [hLex])
     | isLetter char || char == '_' = 
-        let (handledLex, handledState, handledRest) = handleName rest (addChar s char) in 
-        getLexeme handledState handledRest (lexs ++ [handledLex])
+        let (hLex, hState, hRest) = handleName rest (addChar s char) in 
+        getLexeme hState hRest (lexs ++ [hLex])
     | isNumber char || char == '-' =
-        let (handledLex, handledState, handledRest) = handleNumber rest (addChar s char) in 
-        getLexeme handledState handledRest (lexs ++ [handledLex])
+        let (hLex, hState, hRest) = handleNumber rest (addChar s char) in 
+        getLexeme hState hRest (lexs ++ [hLex])
     | char == '"' =
-        let (handledLex, handledState, handledRest) = handleString rest s in 
-        getLexeme handledState handledRest (lexs ++ [handledLex])
+        let (hLex, hState, hRest) = handleString rest s in 
+        getLexeme hState hRest (lexs ++ [hLex])
     | otherwise = lexerError s $ "Illegal character " ++ [char]
 
 skipComment :: String -> LexerState -> String
@@ -147,8 +156,13 @@ handleString :: String -> LexerState -> Handled
 handleString ('"':rest) state = handledFactory state rest StringValue
 handleString ('\\':'u':char:rest) state = undefined -- TODO : unicode
 handleString ('\\':char:rest) state = handleString rest (addChar state char)
+handleString ('\n':_) state = lexerError state "Illegal line terminator in non-block string"
 handleString (char:rest) state = handleString rest (addChar state char)
 handleString [] state = lexerError state "Reached EOF in string"
+
+handleBlock :: String -> LexerState -> Handled
+handleBlock ('"':'"':'"':rest) state = handledFactory state rest StringValue
+handleBlock (char:rest) state = handleBlock rest (addChar state char)
 
 handledFactory :: LexerState -> String -> Token -> Handled
 handledFactory state rest tokType = (Lexeme { 
@@ -162,4 +176,4 @@ handledFactory state rest tokType = (Lexeme {
                       rest)
 
 lexerError :: LexerState -> String -> a
-lexerError state string = error $ "LEX ERROR " ++ (show (currLoc state)) ++ ": " ++ string
+lexerError state string = error $ "Invalid Query " ++ (show (currLoc state)) ++ ": " ++ string
