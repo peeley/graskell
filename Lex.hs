@@ -1,4 +1,7 @@
-module Lex where
+module Lex 
+    (lexString,
+     lexFile
+    ) where
 
 import Data.Char
 
@@ -63,10 +66,11 @@ keywords = ["query", "mutation", "keyword", "subscription", "schema", "extend",
 lexString :: String -> [Lexeme]
 lexString program = getLexeme startState program [startLexeme]
 
-lexFile :: String -> IO [Lexeme]
+lexFile :: String -> IO ()
 lexFile filename = do
     fileContents <- readFile filename
-    return $ lexString fileContents
+    let lexemes = lexString fileContents
+    sequence_ $ map (putStrLn . show) lexemes
 
 getLexeme :: LexerState -> String -> [Lexeme] -> [Lexeme]
 getLexeme s [] lexs = lexs ++ [Lexeme (currLoc s) End "<END>"]
@@ -132,10 +136,7 @@ handleNumber str@(char:rest) state
             handleExp remaining $ addChar expState nextChar
         else
             handleExp remaining $ addChar (addChar expState '+') nextChar
-    | otherwise = if currString state == "-" then
-                            lexerError state "Illegal '-'" 
-                            else 
-                            handledFactory state rest IntValue
+    | otherwise = handledFactory state rest IntValue
 
 handleFloat :: String -> LexerState -> Handled
 handleFloat [] state = handledFactory state "" FloatValue
@@ -154,7 +155,12 @@ handleExp str@(char:rest) state
 
 handleString :: String -> LexerState -> Handled
 handleString ('"':rest) state = handledFactory state rest StringValue
-handleString ('\\':'u':char:rest) state = undefined -- TODO : unicode
+handleString ('\\':'u':char1:char2:char3:char4:rest) state = 
+    let uniBytes = [char1, char2 ,char3, char4] in
+    if all isHexDigit uniBytes then
+        handleString rest $ addChar state $ (fst . head . readLitChar) $ "\\x" ++ uniBytes
+    else
+        handleString rest $ foldl addChar state uniBytes
 handleString ('\\':char:rest) state = handleString rest (addChar state char)
 handleString ('\n':_) state = lexerError state "Illegal line terminator in non-block string"
 handleString (char:rest) state = handleString rest (addChar state char)
@@ -162,6 +168,7 @@ handleString [] state = lexerError state "Reached EOF in string"
 
 handleBlock :: String -> LexerState -> Handled
 handleBlock ('"':'"':'"':rest) state = handledFactory state rest StringValue
+handleBlock ('\n':rest) state = handleBlock rest (moveNewLine state)
 handleBlock (char:rest) state = handleBlock rest (addChar state char)
 
 handledFactory :: LexerState -> String -> Token -> Handled
