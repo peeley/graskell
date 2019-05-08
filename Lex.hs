@@ -1,7 +1,8 @@
-module Lex (lexString, Lexeme) where
+module Lex (lexString, lexFile, Lexeme) where
 
 import Data.Char
 import Data.Sequence
+import qualified Data.ByteString as B
 
 data LexerState = LexerState {
         currLoc :: (Int, Int),
@@ -62,11 +63,11 @@ keywords = ["query", "mutation", "keyword", "subscription", "schema", "extend",
             "on", "scalar", "implements", "type", "interface", "union", "enum",
             "input", "directive"] 
 
-lexString :: String -> Seq Lexeme
-lexString program = getLexeme startState program $ singleton startLexeme
-
 lexFile :: String -> IO ()
 lexFile filename = readFile filename >>= sequence_ . fmap (putStrLn . show) . lexString
+
+lexString :: String -> Seq Lexeme
+lexString program = getLexeme startState program $ singleton startLexeme
 
 getLexeme :: LexerState -> String -> Seq Lexeme -> Seq Lexeme
 getLexeme s [] lexs = lexs |> Lexeme (currLoc s) End "<END>"
