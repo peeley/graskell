@@ -156,7 +156,11 @@ handleExp str@(char:rest) state
 handleString :: String -> LexerState -> Handled
 handleString ('"':rest) state = handledFactory state rest StringValue
 handleString ('\\':'u':char1:char2:char3:char4:rest) state = 
-    handleUnicode handleString (char1:char2:char3:char4:rest) state
+    let uniBytes = [char1, char2 ,char3, char4] in
+    if all isHexDigit uniBytes then
+        handleString rest $ addChar state $ (fst . head . readLitChar) $ "\\x" ++ uniBytes
+    else
+        handleString rest $ foldl addChar state uniBytes
 handleString ('\\':char:rest) state = handleString rest (addChar state char)
 handleString ('\n':_) state = lexerError state "Illegal line terminator in non-block string"
 handleString (char:rest) state = handleString rest (addChar state char)
@@ -164,19 +168,8 @@ handleString [] state = lexerError state "Reached EOF in string"
 
 handleBlock :: String -> LexerState -> Handled
 handleBlock ('"':'"':'"':rest) state = handledFactory state rest StringValue
-handleBlock ('\\':'u':char1:char2:char3:char4:rest) state = 
-    handleUnicode handleBlock (char1:char2:char3:char4:rest) state
 handleBlock ('\n':rest) state = handleBlock rest (moveNewLine state)
 handleBlock (char:rest) state = handleBlock rest (addChar state char)
-
-handleUnicode :: (String -> LexerState -> Handled) -> String -> LexerState -> Handled
-handleUnicode handleF (char1:char2:char3:char4:rest) state =
-    let uniBytes = [char1, char2 ,char3, char4] in
-    if all isHexDigit uniBytes then
-        handleF rest $ addChar state $ (fst . head . readLitChar) $ "\\x" ++ uniBytes
-    else
-        handleF rest $ foldl addChar state uniBytes
-
 
 handledFactory :: LexerState -> String -> Token -> Handled
 handledFactory state rest tokType = (Lexeme { 
