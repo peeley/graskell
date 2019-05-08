@@ -1,7 +1,4 @@
-module Lex 
-    (lexString,
-     lexFile
-    ) where
+module Lex (lexString) where
 
 import Data.Char
 
@@ -25,6 +22,7 @@ moveChar s = s {
 
 moveNewLine :: LexerState -> LexerState
 moveNewLine s = s {
+    currString = (currString s) ++ "\n",
     currLoc = ((fst oldLoc) + 1, 0)
     }
     where oldLoc = currLoc s
@@ -66,6 +64,7 @@ keywords = ["query", "mutation", "keyword", "subscription", "schema", "extend",
 lexString :: String -> [Lexeme]
 lexString program = getLexeme startState program [startLexeme]
 
+-- For easy debugging - see lexerTest.graphql example file
 lexFile :: String -> IO ()
 lexFile filename = do
     fileContents <- readFile filename
@@ -162,12 +161,15 @@ handleString ('\\':'u':char1:char2:char3:char4:rest) state =
     else
         handleString rest $ foldl addChar state uniBytes
 handleString ('\\':char:rest) state = handleString rest (addChar state char)
-handleString ('\n':_) state = lexerError state "Illegal line terminator in non-block string"
+handleString ('\n':_) state = 
+    lexerError state "Illegal line terminator in non-block string"
 handleString (char:rest) state = handleString rest (addChar state char)
 handleString [] state = lexerError state "Reached EOF in string"
 
 handleBlock :: String -> LexerState -> Handled
 handleBlock ('"':'"':'"':rest) state = handledFactory state rest StringValue
+handleBlock ('\\':'"':'"':'"':rest) state = 
+    handleBlock rest (foldl addChar state "\"\"\"")
 handleBlock ('\n':rest) state = handleBlock rest (moveNewLine state)
 handleBlock (char:rest) state = handleBlock rest (addChar state char)
 
