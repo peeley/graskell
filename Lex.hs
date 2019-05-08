@@ -1,6 +1,7 @@
-module Lex (lexString) where
+module Lex (lexString, Lexeme) where
 
 import Data.Char
+import Data.Sequence
 
 data LexerState = LexerState {
         currLoc :: (Int, Int),
@@ -61,42 +62,38 @@ keywords = ["query", "mutation", "keyword", "subscription", "schema", "extend",
             "on", "scalar", "implements", "type", "interface", "union", "enum",
             "input", "directive"] 
 
-lexString :: String -> [Lexeme]
-lexString program = getLexeme startState program [startLexeme]
+lexString :: String -> Seq Lexeme
+lexString program = getLexeme startState program $ singleton startLexeme
 
--- For easy debugging - see lexerTest.graphql example file
 lexFile :: String -> IO ()
-lexFile filename = do
-    fileContents <- readFile filename
-    let lexemes = lexString fileContents
-    sequence_ $ map (putStrLn . show) lexemes
+lexFile filename = readFile filename >>= sequence_ . fmap (putStrLn . show) . lexString
 
-getLexeme :: LexerState -> String -> [Lexeme] -> [Lexeme]
-getLexeme s [] lexs = lexs ++ [Lexeme (currLoc s) End "<END>"]
+getLexeme :: LexerState -> String -> Seq Lexeme -> Seq Lexeme
+getLexeme s [] lexs = lexs |> Lexeme (currLoc s) End "<END>"
 getLexeme s ('\xFEFF':rest) lexs = getLexeme (moveChar s) rest lexs
 getLexeme s (',':rest) lexs = getLexeme (moveChar s) rest lexs
 getLexeme s ('#':rest) lexs = getLexeme (moveNewLine s) (skipComment rest s) lexs
 getLexeme s ('.':'.':'.':rest) lexs = 
     let newState = (moveChar . moveChar . moveChar) s in
-    getLexeme newState rest $ lexs ++ [Lexeme (currLoc s) Punctuator "..."]
+    getLexeme newState rest $ lexs |> Lexeme (currLoc s) Punctuator "..."
 getLexeme s ('"':'"':'"':rest) lexs =
     let newState = (moveChar . moveChar . moveChar) s in
     let (hLex, hState, hRest) = handleBlock rest newState in
-    getLexeme hState hRest (lexs ++ [hLex])
+    getLexeme hState hRest (lexs |> hLex)
 getLexeme s (char:rest) lexs
     | isSpace char = getLexeme (moveChar s) rest lexs
     | char `elem` punctuators =
         let (hLex, hState, hRest) = handlePunct rest (addChar s char) in
-        getLexeme hState hRest (lexs ++ [hLex])
+        getLexeme hState hRest (lexs |> hLex)
     | isLetter char || char == '_' = 
         let (hLex, hState, hRest) = handleName rest (addChar s char) in 
-        getLexeme hState hRest (lexs ++ [hLex])
+        getLexeme hState hRest (lexs |> hLex)
     | isNumber char || char == '-' =
         let (hLex, hState, hRest) = handleNumber rest (addChar s char) in 
-        getLexeme hState hRest (lexs ++ [hLex])
+        getLexeme hState hRest (lexs |> hLex)
     | char == '"' =
         let (hLex, hState, hRest) = handleString rest s in 
-        getLexeme hState hRest (lexs ++ [hLex])
+        getLexeme hState hRest (lexs |> hLex)
     | otherwise = lexerError s $ "Illegal character " ++ [char]
 
 skipComment :: String -> LexerState -> String
