@@ -7,8 +7,7 @@ import qualified Data.ByteString as B
 data LexerState = LexerState {
         currLoc :: (Int, Int),
         currString :: String,
-        lastString :: String,
-        lastToken :: Token }
+        lastString :: String}
 
 addChar :: LexerState -> Char -> LexerState
 addChar s c = (moveChar s) { 
@@ -29,9 +28,7 @@ moveNewLine s = s {
     }
     where oldLoc = currLoc s
 
-data Token = Start |
-            End |
-            Punctuator |
+data Token = Punctuator |
             Name |
             IntValue |
             FloatValue |
@@ -40,23 +37,19 @@ data Token = Start |
             Keyword |
             StringValue deriving (Eq, Show)
 
-data Lexeme = Lexeme {
-    loc :: (Int, Int), 
-    tok :: Token,
-    val :: String } deriving Show
+data Lexeme = StartLexeme |
+            EndLexeme |
+            Lexeme {
+                loc :: (Int, Int), 
+                tok :: Token,
+                val :: String } deriving Show
 
 type Handled = (Lexeme, LexerState, String)
 
 startState = LexerState {
     currLoc = (0,0),
     currString = "",
-    lastString = "",
-    lastToken = Start}
-
-startLexeme = Lexeme {
-    loc = (0,0),
-    tok = Start,
-    val = "<START>"}
+    lastString = ""}
 
 punctuators = "!$():=@[]{}|"
 keywords = ["query", "mutation", "keyword", "subscription", "schema", "extend",
@@ -67,10 +60,10 @@ lexFile :: String -> IO ()
 lexFile filename = readFile filename >>= sequence_ . fmap (putStrLn . show) . lexString
 
 lexString :: String -> Seq Lexeme
-lexString program = getLexeme startState program $ singleton startLexeme
+lexString program = getLexeme startState program $ singleton StartLexeme
 
 getLexeme :: LexerState -> String -> Seq Lexeme -> Seq Lexeme
-getLexeme s [] lexs = lexs |> Lexeme (currLoc s) End "<END>"
+getLexeme s [] lexs = lexs |> EndLexeme
 getLexeme s ('\xFEFF':rest) lexs = getLexeme (moveChar s) rest lexs
 getLexeme s (',':rest) lexs = getLexeme (moveChar s) rest lexs
 getLexeme s ('#':rest) lexs = getLexeme (moveNewLine s) (skipComment rest s) lexs
@@ -177,7 +170,6 @@ handledFactory state rest tokType = (Lexeme {
                         tok = tokType,
                         val = (currString state)},
                       state {
-                          lastToken = tokType,
                           lastString = currString state,
                           currString = ""},
                       rest)
