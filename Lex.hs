@@ -1,4 +1,4 @@
-module Lex (lexString, lexFile, Lexeme) where
+module Lex (lexString, lexFile, Lexeme, Token) where
 
 import Data.Char
 import Data.Sequence
@@ -37,9 +37,7 @@ data Token = Punctuator |
             Keyword |
             StringValue deriving (Eq, Show)
 
-data Lexeme = StartLexeme |
-            EndLexeme |
-            Lexeme {
+data Lexeme = Lexeme {
                 loc :: (Int, Int), 
                 tok :: Token,
                 val :: String } deriving Show
@@ -60,10 +58,10 @@ lexFile :: String -> IO ()
 lexFile filename = readFile filename >>= sequence_ . fmap (putStrLn . show) . lexString
 
 lexString :: String -> Seq Lexeme
-lexString program = getLexeme startState program $ singleton StartLexeme
+lexString program = getLexeme startState program empty 
 
 getLexeme :: LexerState -> String -> Seq Lexeme -> Seq Lexeme
-getLexeme s [] lexs = lexs |> EndLexeme
+getLexeme s [] lexs = lexs
 getLexeme s ('\xFEFF':rest) lexs = getLexeme (moveChar s) rest lexs
 getLexeme s (',':rest) lexs = getLexeme (moveChar s) rest lexs
 getLexeme s ('#':rest) lexs = getLexeme (moveNewLine s) (skipComment rest s) lexs
