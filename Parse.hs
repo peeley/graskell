@@ -23,9 +23,9 @@ parse :: Seq Lexeme -> ParseState
 parse lexs = parseDocument $ ParseState { tokens = lexs, ast = empty }
 
 parseDocument :: ParseState -> ParseState
-parseDocument ps = 
-    | tokenType == Name = ps {
+parseDocument ps 
+    | tokenType == Name = ps { tokens = (Data.Sequence.drop 1 . tokens) ps,
+                                ast = ast ps |> Definition NameVal thisToken}
         where 
-            thisToken = index 0 $ tokens ps in
+            thisToken = index 0 $ tokens ps
             tokenType = tok thisToken
-            tokenVal = val thisToken
